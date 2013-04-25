@@ -8,23 +8,29 @@
 
 require __DIR__.'/libs/php-cli/cli.php';
 
-cli::register_arg( 'd', 'dir',    'Directory containing images', true );
-cli::register_arg( 'w', 'width',  'Minimum width of each cell, defaults to width of image + 1', false );
-cli::register_arg( '',  'height', 'Minimum height of each cell, defaults to height of image + 1', false );
-cli::register_arg( 'x', 'horiz',  'Whether to lay out horizontally, defaults to vertical', false );
-cli::register_arg( 'p', 'prefix', 'CSS class prefix, defaults to "sprite"', false );
-//cli::register_arg( 'w', 'wrap',   'Maximum no. of rows or columns', false );
-cli::register_arg( 's', 'scale',   'Scaling of final images, defaults to 1', false );
+// dependency checks
+if( ! function_exists('imagecreatetruecolor') ){
+    cli::death('PHP GD module required');
+}
+
+cli::register_arg( 'd', 'dir',    'Directory containing images, defaults to cwd', false );
+cli::register_arg( 'w', 'width',  'Minimum width of each cell, defaults to width of image + padding', false );
+cli::register_arg( '',  'height', 'Minimum height of each cell, defaults to height of image + padding', false );
+cli::register_arg( 'p', 'padding','Minimum distance between items, defaults to 1', false );
+cli::register_arg( 'z', 'horiz',  'Whether to lay out horizontally, defaults to vertical', false );
+cli::register_arg( 'n', 'name',   'CSS class prefix and file name, defaults to "sprite"', false );
+//cli::register_arg( '', 'wrap',  'Maximum no. of rows or columns', false );
+cli::register_arg( 's', 'scale',  'Scaling of final images, defaults to 1', false );
 cli::validate_args();
 
 
-$dir = cli::arg('d');
+$dir = rtrim( cli::arg('d'), "\n/") or $dir = '.';
 if( ! is_readable($dir) || ! is_dir($dir) ){
     throw new Exception('Directory unreadable, try with -d open_basedir='.ini_get('open_basedir').':'.$dir);
 }
 
-$prefix = cli::arg('p','sprite');
-$target = rtrim($dir," \n/").'/'.$prefix.'.png';
+$prefix = cli::arg('n','sprite');
+$target = $dir.'/'.$prefix.'.png';
 
 // get all image references
 $files = array();
@@ -33,7 +39,7 @@ while( $f = readdir($rsc) ){
     if( preg_match('/\.(png|jpe?g|gif)$/i', $f, $r ) ){
         $f = $dir.'/'.$f;
         if( $f === $target ){
-            continue; // <- this is our export
+            continue; // <- this is a previous exported sprite
         }
         $files[] = $f;
     }
@@ -45,7 +51,7 @@ if( ! $files ){
     exit(1);
 }
 
-$Sprite = new CssSprite( cli::arg('w'), cli::arg('h'), cli::arg('x'), cli::arg('w') );
+$Sprite = new CssSprite( cli::arg('padding',1), cli::arg('width'), cli::arg('height'), cli::arg('horiz') );
 foreach( $files as $path ){
     $Sprite->add_file( $path );
 }
@@ -72,6 +78,7 @@ class CssSprite {
     
     // config
     private $horiz;
+    private $padding;
     private $minwidth;
     private $minheight;
     private $wrapnum;
@@ -89,7 +96,8 @@ class CssSprite {
     
     
     
-    public function __construct( $minwidth = 0, $minheight = 0, $horiz = false, $wrapnum = 0 ){
+    public function __construct( $padding = 1, $minwidth = 0, $minheight = 0, $horiz = false, $wrapnum = 0 ){
+        $this->padding = (int) $padding;
         $this->minwidth = (int) $minwidth;
         $this->minheight = (int) $minheight;
         $this->horiz = (bool) $horiz;
@@ -114,14 +122,17 @@ class CssSprite {
             'p' => $path,
             'n' => $name,
         );
-        $width = $this->minwidth ? max( $this->minwidth, $width+1 ) : $width+1;
-        $height = $this->minheight ? max( $this->minheight, $height+1 ) : $height+1;
-        // increase bounds
+        // increase bounds by minimum amount
         $this->width  = max( $this->width, $this->x + $width );
         $this->height = max( $this->height, $this->y + $height );
+        // set grid space for this item
+        $width += $this->padding;
+        $width = $this->minwidth ? max( $this->minwidth, $width ) : $width;
+        $height += $this->padding; 
+        $height = $this->minheight ? max( $this->minheight, $height ) : $height;
         // check wrapping
         if( $this->wrapnum ){
-            // @todo ..
+            // @todo columnize items
         }
         // increment to right
         if( $this->horiz ){
@@ -214,7 +225,7 @@ class CssSprite {
                     $dst_w = $this->scale($dst_w);
                     $dst_h = $this->scale($dst_h);
                 }
-                if( ! imagecopyresampled( $sprite, $gd, $dst_x, $dst_y , 0, 0, $dst_w, $dst_h, $src_w, $src_w ) ){
+                if( ! imagecopyresampled( $sprite, $gd, $dst_x, $dst_y, 0, 0, $dst_w, $dst_h, $src_w, $src_h ) ){
                     throw new Exception('Failed to composite '.$p);
                 }
             }
