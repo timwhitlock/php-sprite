@@ -19,6 +19,7 @@ cli::register_arg( '',  'height', 'Minimum height of each cell, defaults to heig
 cli::register_arg( 'p', 'padding','Minimum distance between items, defaults to 1', false );
 cli::register_arg( 'z', 'horiz',  'Whether to lay out horizontally, defaults to vertical', false );
 cli::register_arg( 'n', 'name',   'CSS class prefix and file name, defaults to "sprite"', false );
+cli::register_arg( 'c', 'colour', 'Opaque background color as hex, deaults to transparent', false );
 //cli::register_arg( '', 'wrap',  'Maximum no. of rows or columns', false );
 cli::register_arg( 's', 'scale',  'Scaling of final images, defaults to 1', false );
 cli::validate_args();
@@ -59,6 +60,8 @@ foreach( $files as $path ){
 $scale = cli::arg('s') and
 $Sprite->set_scale( $scale );
 
+$colour = cli::arg('colour') and
+$Sprite->set_colour( $colour );
 
 // export image to file
 $png = $Sprite->compile();
@@ -83,6 +86,7 @@ class CssSprite {
     private $minheight;
     private $wrapnum;
     private $scale;
+    private $colour = array( 0xFF, 0xFF, 0xFF, 127 );
     
     // grid [ [ { x:, y: }, {} ], [ {} ] ]
     private $x = 0;
@@ -198,6 +202,20 @@ class CssSprite {
     }    
     
     
+    /**
+     * @todo handle alpha RRGGBBAA
+     */
+    public function set_colour( $colour ){
+        if( ! is_array($colour) ){
+            $n = intval( trim($colour,' #'), 16 );
+            $colour = array( $n & 0xFF );
+            array_unshift( $colour, ($n>>=8) & 0xFF );
+            array_unshift( $colour, ($n>>=8) & 0xFF );
+        }
+        $this->colour = $colour + array(127,127,127,0);
+    }    
+    
+    
     
     /**
      * Build final sprite image
@@ -212,7 +230,7 @@ class CssSprite {
         // create transparent canvas to start
         $sprite = imagecreatetruecolor( $w, $h );
         imagesavealpha( $sprite, true );
-        imagefill( $sprite, 0, 0, imagecolorallocatealpha( $sprite, 0xFF, 0xFF, 0xFF, 127 ) );
+        imagefill( $sprite, 0, 0, imagecolorallocatealpha( $sprite, $this->colour[0], $this->colour[1], $this->colour[2], $this->colour[3] ) );
         // superimpose all image files
         foreach( $this->rows as $row ){
             foreach( $row as $cell ){
