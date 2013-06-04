@@ -158,10 +158,13 @@ class CssSprite {
      * 
      */
     public function set_scale( $scale ){
+        $this->scale = 1;
         if( $scale && '1' !== $scale ){
             $scale = floatval($scale) and
             $this->scale = $scale;
         }
+        // ensure padding is not scaled
+        $this->padding = (int) ceil( $this->padding / $this->scale );
         return $this->scale;
     }
 
