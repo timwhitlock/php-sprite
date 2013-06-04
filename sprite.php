@@ -20,7 +20,7 @@ cli::register_arg( 'p', 'padding','Minimum distance between items, defaults to 1
 cli::register_arg( 'z', 'horiz',  'Whether to lay out horizontally, defaults to vertical', false );
 cli::register_arg( 'n', 'name',   'CSS class prefix and file name, defaults to "sprite"', false );
 cli::register_arg( 'c', 'colour', 'Opaque background color as hex, deaults to transparent', false );
-//cli::register_arg( '', 'wrap',  'Maximum no. of rows or columns', false );
+cli::register_arg( '',  'wrap',   'Wrap at this many rows (horiz) or columns (vert)', false );
 cli::register_arg( 's', 'scale',  'Scaling of final images, defaults to 1', false );
 cli::validate_args();
 
@@ -52,10 +52,11 @@ if( ! $files ){
     exit(1);
 }
 
-$Sprite = new CssSprite( cli::arg('padding',1), cli::arg('width'), cli::arg('height'), cli::arg('horiz') );
+$Sprite = new CssSprite( cli::arg('padding',1), cli::arg('width'), cli::arg('height'), cli::arg('horiz'), cli::arg('wrap') );
 foreach( $files as $path ){
     $Sprite->add_file( $path );
 }
+
 
 $scale = cli::arg('s') and
 $Sprite->set_scale( $scale );
@@ -93,6 +94,7 @@ class CssSprite {
     private $y = 0;
     private $rows = array();
     private $r = 0;
+    private $c = 0;
     
     // max bounds
     private $width = 0;
@@ -117,7 +119,7 @@ class CssSprite {
         list( $width, $height, $type ) = $inf;
         $name = preg_replace('/\.(png|jpe?g|gif)$/i','',basename($path) );
         // register this cell at current point the grid
-        $this->rows[$this->r][] = array (
+        $this->rows[$this->r][$this->c] = array (
             'w' => $width,
             'h' => $height,
             't' => $type,
@@ -134,21 +136,29 @@ class CssSprite {
         $width = $this->minwidth ? max( $this->minwidth, $width ) : $width;
         $height += $this->padding; 
         $height = $this->minheight ? max( $this->minheight, $height ) : $height;
-        // check wrapping
-        if( $this->wrapnum ){
-            // @todo columnize items
-        }
-        // increment to right
+        // move grid position ready for next item
         if( $this->horiz ){
-            $this->x += $width;
+            // wrap to next row?
+            if( ++$this->c === $this->wrapnum ){
+                $this->c = $this->x = 0;
+                $this->r++;
+                $this->y+= $height;
+            }
+            // no, increment to next column
+            else {
+                $this->x += $width;
+            }
         }
-        // else increment down
+        // wrap to top of next column?
+        else if( ++$this->r === $this->wrapnum ){
+            $this->c++;
+            $this->x += $width;
+            $this->r = $this->y = 0;
+        }
+        // no, increment to next row
         else {
-            $this->r++;
-            $this->x = 0;
             $this->y += $height;
         }
-        //
         return $this;
     }
     
