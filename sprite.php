@@ -22,6 +22,7 @@ cli::register_arg( 'n', 'name',   'CSS class prefix and file name, defaults to "
 cli::register_arg( 'c', 'colour', 'Opaque background color as hex, deaults to transparent', false );
 cli::register_arg( '',  'wrap',   'Wrap at this many rows (horiz) or columns (vert)', false );
 cli::register_arg( 's', 'scale',  'Scaling of final images, defaults to 1', false );
+cli::register_arg( 'r', 'relative', 'Whether to use relative (%) image positions', false );
 cli::validate_args();
 
 
@@ -52,17 +53,30 @@ if( ! $files ){
     exit(1);
 }
 
-$Sprite = new CssSprite( cli::arg('padding',1), cli::arg('width'), cli::arg('height'), cli::arg('horiz'), cli::arg('wrap') );
-foreach( $files as $path ){
-    $Sprite->add_file( $path );
-}
+// configure sprite from command line flags
 
+$Sprite = new CssSprite( cli::arg('width'), cli::arg('height'), cli::arg('horiz') );
 
 $scale = cli::arg('s') and
 $Sprite->set_scale( $scale );
 
-$colour = cli::arg('colour') and
+$colour = cli::arg('c') and
 $Sprite->set_colour( $colour );
+
+$relative = cli::arg('r') and
+$Sprite->use_relative($relative);
+
+$wrap = cli::arg('wrap') and
+$Sprite->wrap_at( $wrap );
+
+$padding = cli::arg('padding') and
+$Sprite->pad($padding);
+
+
+// add all found files
+foreach( $files as $path ){
+    $Sprite->add_file( $path );
+}
 
 // export image to file
 $png = $Sprite->compile();
@@ -82,12 +96,13 @@ class CssSprite {
     
     // config
     private $horiz;
-    private $padding;
+    private $padding = 1;
     private $minwidth;
     private $minheight;
     private $wrapnum;
-    private $scale;
+    private $_scale;
     private $colour = array( 0xFF, 0xFF, 0xFF, 127 );
+    private $relative = false;
     
     // grid [ [ { x:, y: }, {} ], [ {} ] ]
     private $x = 0;
@@ -102,12 +117,10 @@ class CssSprite {
     
     
     
-    public function __construct( $padding = 1, $minwidth = 0, $minheight = 0, $horiz = false, $wrapnum = 0 ){
-        $this->padding = (int) $padding;
+    public function __construct( $minwidth = 0, $minheight = 0, $horiz = false ){
         $this->minwidth = (int) $minwidth;
         $this->minheight = (int) $minheight;
         $this->horiz = (bool) $horiz;
-        $this->wrapnum = (int) $wrapnum;
     }   
     
     
@@ -161,21 +174,61 @@ class CssSprite {
         }
         return $this;
     }
+
+
+
+    /**
+     * 
+     */
+    public function pad( $px ){
+        $this->padding = (int) $px;
+    }
     
+    
+    /**
+     * 
+     */
+    public function wrap_at( $col_or_row = null ){
+        $was = $this->wrapnum;
+        if( isset($col_or_row) ){
+            $this->wrapnum = (int) $col_or_row;
+        }
+        return $was;
+    }
+    
+    
+    /**
+     * 
+     */
+    public function use_relative( $bool = null ){
+        $was = $this->relative;
+        if( isset($bool) ){
+            if( $bool ){
+                if( ! $this->minwidth && ( $this->horiz || $this->wrapnum ) ){
+                    throw new Exception('relative horizontal offsets require width setting');
+                }
+                if( ! $this->minheight && ( ! $this->horiz || $this->wrapnum ) ){
+                    throw new Exception('relative vertical offsets require height setting');
+                }
+            }
+            $this->relative = (bool) $bool;
+        }
+        return $was;
+    }
     
     
     /**
      * 
      */
     public function set_scale( $scale ){
-        $this->scale = 1;
+        $this->_scale = 1;
         if( $scale && '1' !== $scale ){
             $scale = floatval($scale) and
-            $this->scale = $scale;
+            $this->_scale = $scale;
         }
         // ensure padding is not scaled
-        $this->padding = (int) ceil( $this->padding / $this->scale );
-        return $this->scale;
+        $this->padding = (int) ceil( $this->padding / $this->_scale );
+        return $this->_scale;
     }
 
     
@@ -184,8 +237,11 @@ class CssSprite {
      * 
      */
     private function scale( $n ){
-        if( $this->scale ){
-            $n = (int) ceil( $this->scale * $n );
+        if( ! $n ){
+            return 0;
+        }
+        if( $this->_scale && 1 !== $this->_scale ){
+            $n = (int) ceil( $this->_scale * $n );
         }
         return $n;
     }    
@@ -198,6 +254,11 @@ class CssSprite {
     public function get_css( $prefix = 'sprite' ){
         $w = $this->minwidth  ? $this->scale($this->minwidth)  : 0;
         $h = $this->minheight ? $this->scale($this->minheight) : 0;
+        if( $this->relative ){
+            // background %age subtracts visible area from 100% so be sure to set --width and --height
+            $ww = $this->scale( $this->width - $w );            
+            $hh = $this->scale( $this->height - $h );            
+        }
         $lines[] = sprintf(
             '.%s { background: url(%1$s.png) no-repeat; display: inline-block; min-width: %upx; min-height: %upx; }', 
             $prefix, $w, $h
@@ -205,10 +266,17 @@ class CssSprite {
         foreach( $this->rows as $row ){
             foreach( $row as $cell ){
                 extract( $cell );
-                $lines[] = sprintf(
-                    '.%s-%s { background-position: -%upx -%upx; }', 
-                    $prefix, $n, $this->scale($x), $this->scale($y) 
-                );
+                $x = $this->scale($x);
+                $y = $this->scale($y);
+                if( $this->relative ){
+                    $x = $x ? ( $x === $ww ? 'right'  : sprintf( '%f%%', 100 * $x / $ww ) ) : '0';
+                    $y = $y ? ( $y === $hh ? 'bottom' : sprintf( '%f%%', 100 * $y / $hh ) ) : '0';
+                }
+                else {
+                    $x = $x ? '-'.$x.'px' : '0';
+                    $y = $y ? '-'.$y.'px' : '0';
+                }
+                $lines[] = sprintf( '.%s-%s { background-position: %s %s; }', $prefix, $n, $x, $y);
             }
         }
         return $lines;
@@ -234,12 +302,8 @@ class CssSprite {
      * Build final sprite image
      */
     public function compile(){
-        $w = $this->width;
-        $h = $this->height;
-        if( $this->scale ){
-            $w = (int) ceil( $this->scale * $w );
-            $h = (int) ceil( $this->scale * $h );
-        }
+        $w = $this->scale( $this->width );
+        $h = $this->scale( $this->height );
         // create transparent canvas to start
         $sprite = imagecreatetruecolor( $w, $h );
         imagesavealpha( $sprite, true );
@@ -250,12 +314,10 @@ class CssSprite {
                 extract( $cell, EXTR_PREFIX_ALL, 'src' );
                 extract( $cell, EXTR_PREFIX_ALL, 'dst' );
                 $gd = imagecreatefromstring( file_get_contents($src_p) );
-                if( $this->scale ){
-                    $dst_x = $this->scale($dst_x);
-                    $dst_y = $this->scale($dst_y);
-                    $dst_w = $this->scale($dst_w);
-                    $dst_h = $this->scale($dst_h);
-                }
+                $dst_x = $this->scale($dst_x);
+                $dst_y = $this->scale($dst_y);
+                $dst_w = $this->scale($dst_w);
+                $dst_h = $this->scale($dst_h);
                 if( ! imagecopyresampled( $sprite, $gd, $dst_x, $dst_y, 0, 0, $dst_w, $dst_h, $src_w, $src_h ) ){
                     throw new Exception('Failed to composite '.$p);
                 }
@@ -263,7 +325,6 @@ class CssSprite {
         }
         return $sprite;
     }
-    
     
     
 }
