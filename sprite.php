@@ -23,6 +23,7 @@ cli::register_arg( 'c', 'colour', 'Opaque background color as hex, deaults to tr
 cli::register_arg( '',  'wrap',   'Wrap at this many rows (horiz) or columns (vert)', false );
 cli::register_arg( 's', 'scale',  'Scaling of final images, defaults to 1', false );
 cli::register_arg( 'r', 'relative', 'Whether to use relative (%) image positions', false );
+cli::register_arg( 'j', 'jpeg',   'Jpeg quality to use, defaults to PNG', false );
 cli::validate_args();
 
 
@@ -32,7 +33,15 @@ if( ! is_readable($dir) || ! is_dir($dir) ){
 }
 
 $prefix = cli::arg('n','sprite');
-$target = $dir.'/'.$prefix.'.png';
+$target = $dir.'/'.$prefix;
+
+if( $jpeg = (int) cli::arg('j') ){
+    $target .= '.jpg';
+}
+else {
+    $target .= '.png';
+}
+
 
 // get all image references
 $files = array();
@@ -60,8 +69,12 @@ $Sprite = new CssSprite( cli::arg('width'), cli::arg('height'), cli::arg('horiz'
 $scale = cli::arg('s') and
 $Sprite->set_scale( $scale );
 
-$colour = cli::arg('c') and
-$Sprite->set_colour( $colour );
+if( $colour = cli::arg('c') ){
+    $Sprite->set_colour( $colour );
+}
+else if( $jpeg ){
+    $Sprite->set_colour( '#ffffff' );
+}
 
 $relative = cli::arg('r') and
 $Sprite->use_relative($relative);
@@ -79,8 +92,13 @@ foreach( $files as $path ){
 }
 
 // export image to file
-$png = $Sprite->compile();
-imagepng( $png, $target );
+$gd = $Sprite->compile();
+if( $jpeg ){
+    imagejpeg( $gd, $target, $jpeg );
+}
+else {
+    imagepng( $gd, $target );
+}
 
 
 // dump css, and tell me where the file is
@@ -300,6 +318,7 @@ class CssSprite {
     
     /**
      * Build final sprite image
+     * @return resource GD image handle
      */
     public function compile(){
         $w = $this->scale( $this->width );
