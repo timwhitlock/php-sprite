@@ -19,7 +19,7 @@ cli::register_arg( '',  'height', 'Minimum height of each cell, defaults to heig
 cli::register_arg( 'p', 'padding','Minimum distance between items, defaults to 1', false );
 cli::register_arg( 'z', 'horiz',  'Whether to lay out horizontally, defaults to vertical', false );
 cli::register_arg( 'n', 'name',   'CSS class prefix and file name, defaults to "sprite"', false );
-cli::register_arg( 'c', 'colour', 'Opaque background color as hex, deaults to transparent', false );
+cli::register_arg( 'c', 'colour', 'Opaque background color as hex, defaults to transparent', false );
 cli::register_arg( '',  'wrap',   'Wrap at this many rows (horiz) or columns (vert)', false );
 cli::register_arg( 's', 'scale',  'Scaling of final images, defaults to 1', false );
 cli::register_arg( 'r', 'relative', 'Whether to use relative (%) image positions', false );
