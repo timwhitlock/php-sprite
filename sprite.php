@@ -76,11 +76,11 @@ else if( $jpeg ){
     $Sprite->set_colour( '#ffffff' );
 }
 
-$relative = cli::arg('r') and
-$Sprite->use_relative($relative);
-
 $wrap = cli::arg('wrap') and
 $Sprite->wrap_at( $wrap );
+
+$relative = cli::arg('r') and
+$Sprite->use_relative($relative);
 
 $padding = cli::arg('padding') and
 $Sprite->pad($padding);
