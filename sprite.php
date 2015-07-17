@@ -24,6 +24,7 @@ cli::register_arg( '',  'wrap',   'Wrap at this many rows (horiz) or columns (ve
 cli::register_arg( 's', 'scale',  'Scaling of final images, defaults to 1', false );
 cli::register_arg( 'r', 'relative', 'Whether to use relative (%) image positions', false );
 cli::register_arg( 'j', 'jpeg',   'Jpeg quality to use, defaults to PNG', false );
+cli::register_arg( '',  'recursive', 'Add images found in sub directories', false );
 cli::validate_args();
 
 
@@ -43,28 +44,15 @@ else {
 }
 
 
-// get all image references
-$files = array();
-$rsc = opendir($dir);
-while( $f = readdir($rsc) ){
-    if( preg_match('/\.(png|jpe?g|gif)$/i', $f, $r ) ){
-        $f = $dir.'/'.$f;
-        if( $f === $target ){
-            continue; // <- this is a previous exported sprite
-        }
-        $files[] = $f;
-    }
-}
-closedir($rsc);
+// configure sprite from command line flags
+$Sprite = new CssSprite( cli::arg('width'), cli::arg('height'), cli::arg('horiz') );
 
-if( ! $files ){
+// collect all files
+if( ! $Sprite->init( $target, cli::arg('recursive') ) ){
     cli::stderr("no images files found\n");
     exit(1);
 }
 
-// configure sprite from command line flags
-
-$Sprite = new CssSprite( cli::arg('width'), cli::arg('height'), cli::arg('horiz') );
 
 $scale = cli::arg('s') and
 $Sprite->set_scale( $scale );
@@ -84,12 +72,6 @@ $Sprite->use_relative($relative);
 
 $padding = cli::arg('padding') and
 $Sprite->pad($padding);
-
-
-// add all found files
-foreach( $files as $path ){
-    $Sprite->add_file( $path );
-}
 
 // export image to file
 $gd = $Sprite->compile();
@@ -133,22 +115,58 @@ class CssSprite {
     private $width = 0;
     private $height = 0;
     
-    
+    // file system
+    private $basedir;
+    private $target;
+
+
     
     public function __construct( $minwidth = 0, $minheight = 0, $horiz = false ){
         $this->minwidth = (int) $minwidth;
         $this->minheight = (int) $minheight;
         $this->horiz = (bool) $horiz;
-    }   
-    
-    
-    public function add_file( $path ){
+    }
+
+
+    public function init( $target, $recursive = false ){
+        $this->target = $target;
+        $this->basedir = dirname($target);
+        return $this->find( $this->basedir, $recursive );
+    }
+
+
+    private function find( $dir, $recursive ){
+        $n = 0;
+        // files
+        foreach( glob( $dir.'/*.{png,jpeg,jpg,gif}', GLOB_BRACE|GLOB_NOSORT) as $f ){
+            if( $f === $this->target ){
+                continue; // <- previously saved sprite
+            }
+            $this->add_file( $f );
+            $n++;
+        }
+        // folders:
+        if( $recursive ){
+            foreach( glob( $dir.'/*', GLOB_ONLYDIR|GLOB_NOSORT ) as $d ){
+                $n += $this->find( $d, true );
+            }
+        }
+        return $n;
+    }
+
+
+    private function add_file( $path ){
         $inf = getimagesize( $path );
         if( ! $inf || ! $inf[2] ){
             throw new Exception('Invalid image file '.$path);
         }
         list( $width, $height, $type ) = $inf;
-        $name = preg_replace('/\.(png|jpe?g|gif)$/i','',basename($path) );
+
+        // convert file name in to css name
+        $name = substr( $path, 1 + strlen($this->basedir) );
+        $name = preg_replace('/\.[a-z]+$/i', '', $name );
+        $name = strtr( $name, '/', '-' );
+
         // register this cell at current point the grid
         $this->rows[$this->r][$this->c] = array (
             'w' => $width,
